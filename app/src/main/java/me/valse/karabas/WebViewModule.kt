@@ -1,6 +1,7 @@
 package me.valse.karabas
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.util.Log
 import android.view.KeyEvent
 import android.webkit.ConsoleMessage
@@ -11,6 +12,8 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 class WebViewModule(val context: Context, val webView: WebView) {
 

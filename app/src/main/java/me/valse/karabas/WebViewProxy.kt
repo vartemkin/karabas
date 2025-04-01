@@ -1,6 +1,7 @@
 package me.valse.karabas
 
 import android.content.Context
+import android.os.Build
 import android.os.Environment
 import android.util.Log
 import android.webkit.WebResourceRequest
@@ -18,18 +19,55 @@ import java.io.InputStream
 import java.io.RandomAccessFile
 
 
-
-
 class WebViewProxy(context: Context) {
 
     val contextSS = context;
 
-    private fun getCacheDir(context: Context): File {
+    private fun getCacheDir2(context: Context): File {
         return File(context.getExternalFilesDir(Environment.DIRECTORY_MUSIC), "KaraCache")
     }
 
+    fun getDownloadsDir(): File {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Для Android 10+
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        } else {
+            // Альтернативный способ
+            File(Environment.getExternalStorageDirectory(), "Download")
+        }
+    }
+
+    private fun getCacheDir(context: Context): File {
+        val appCacheDir = File(getDownloadsDir(), "KaraCache").apply {
+            if (!exists()) mkdirs()
+        }
+        return appCacheDir;
+    }
+
+
+
+    private fun getCacheDir3(context: Context): File {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            Log.d("makfa zazaza", "pp");
+            // Для Android 10+ используем специальный API
+            var ttt = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "KaraCache")
+            Log.d("makfa zazaza", ttt.toString());
+            return ttt;
+        } else {
+            // Старый способ для версий ниже Android 10
+            val downloadsDir =
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+
+            Log.d("makfa zazaza", downloadsDir.toString());
+            return File(downloadsDir, "ValseDlp")
+        }
+    }
+
     private fun getCachedFile(url: String): File {
-        return File(getCacheDir(contextSS), generateFilenameFromUrl(url))
+        Log.d("makfa zaz87aza", url);
+        var tt = File(getCacheDir(contextSS), generateFilenameFromUrl(url))
+        Log.d("makfa za9944a", tt.toString());
+        return tt;
     }
 
     private fun generateFilenameFromUrl(url: String): String {
@@ -117,6 +155,7 @@ class WebViewProxy(context: Context) {
         // Создаем временный файл для кеширования
         //val tempFile = File.createTempFile("temp", null, getCacheDir(contextSS))
         val cachedFile = getCachedFile(url)
+        Log.d("makfa !!!>>> ", cachedFile.toString());
         val fileOutputStream = FileOutputStream(cachedFile)
 
 
@@ -129,7 +168,7 @@ class WebViewProxy(context: Context) {
             determineMimeType(response),
             determineCharset(response),
             response.code,
-            response.message,
+            response.message.takeIf { it.isNotEmpty() } ?: "OK", // Обязательно непустая строка
             convertHeaders(response.headers),
             teeInputStream
         )
@@ -219,12 +258,34 @@ class WebViewProxy(context: Context) {
 
 
     fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+        val url = request.url.toString()
 
-        val shouldBlock = false // filterNetworkRequests(webView, request);
-        Log.d("WebView", request.url.toString())
-        if (shouldBlock) {
-            return WebResourceResponse("text/javascript", "UTF-8", null)
-        }
+
+        // Перехватываем только MP3 файлы
+        if (url.endsWith(".mp3") || url.endsWith(".flac")) {
+            try {
+                return downloadAndCacheResponse(url, request);
+
+/*               // Проверяем наличие файла в кеше
+               val cachedFile = getCachedFile(url)
+/               return if (cachedFile.exists()) {
+                   // Если файл есть в кеше - отдаем его
+                   createResponseFromFile(cachedFile, request)
+               } else {
+                   // Если файла нет - загружаем, кешируем и отдаем
+                   downloadAndCacheResponse(url, request)
+               }
+
+*/
+           } catch (e: Exception) {
+               e.printStackTrace()
+           }
+       }
+//        val shouldBlock = false // filterNetworkRequests(webView, request);
+//        Log.d("WebView", request.url.toString())
+//        if (shouldBlock) {
+//            return WebResourceResponse("text/javascript", "UTF-8", null)
+//        }
         return null
-    }
+   }
 }
