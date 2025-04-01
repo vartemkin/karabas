@@ -21,10 +21,19 @@ import java.io.RandomAccessFile
 
 class WebViewProxy(context: Context) {
 
-    val contextSS = context;
+    // private val contextSS = context
 
-    private fun getCacheDir2(context: Context): File {
+    /*private fun getCacheDir2(context: Context): File {
         return File(context.getExternalFilesDir(Environment.DIRECTORY_MUSIC), "KaraCache")
+    }*/
+
+    private fun shouldCacheRequest(request: WebResourceRequest): Boolean {
+        val rangeHeader = request.requestHeaders["Range"]
+        return when {
+            rangeHeader == null -> true // Полный файл запрашивается
+            rangeHeader.startsWith("bytes=0-") -> true // Начало файла
+            else -> false // Пропускаем частичные запросы (докачка)
+        }
     }
 
     fun getDownloadsDir(): File {
@@ -37,37 +46,43 @@ class WebViewProxy(context: Context) {
         }
     }
 
-    private fun getCacheDir(context: Context): File {
-        val appCacheDir = File(getDownloadsDir(), "KaraCache").apply {
-            if (!exists()) mkdirs()
-        }
-        return appCacheDir;
-    }
 
-
-
-    private fun getCacheDir3(context: Context): File {
+    /*private fun getCacheDir3(context: Context): File {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            Log.d("makfa zazaza", "pp");
+            Log.d("makfa zazaza", "pp")
             // Для Android 10+ используем специальный API
-            var ttt = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "KaraCache")
-            Log.d("makfa zazaza", ttt.toString());
-            return ttt;
+            var ttt =
+                File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "KaraCache")
+            Log.d("makfa zazaza", ttt.toString())
+            return ttt
         } else {
             // Старый способ для версий ниже Android 10
             val downloadsDir =
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
 
-            Log.d("makfa zazaza", downloadsDir.toString());
+            Log.d("makfa zazaza", downloadsDir.toString())
             return File(downloadsDir, "ValseDlp")
         }
+    }*/
+
+    private fun getCacheDir(): File {
+        val appCacheDir = File(getDownloadsDir(), "KaraCache").apply {
+            if (!exists()) mkdirs()
+        }
+        return appCacheDir
+    }
+
+    private fun getTempFile(url: String): File {
+        val uu = url.replace(".mp3", ".temp").replace(".flac", ".temp")
+        var result = File(getCacheDir(), generateFilenameFromUrl(uu))
+        Log.d("KaraLog: temp", result.toString())
+        return result
     }
 
     private fun getCachedFile(url: String): File {
-        Log.d("makfa zaz87aza", url);
-        var tt = File(getCacheDir(contextSS), generateFilenameFromUrl(url))
-        Log.d("makfa za9944a", tt.toString());
-        return tt;
+        val result = File(getCacheDir(), generateFilenameFromUrl(url))
+        Log.d("KaraLog: cache", result.toString())
+        return result
     }
 
     private fun generateFilenameFromUrl(url: String): String {
@@ -92,23 +107,22 @@ class WebViewProxy(context: Context) {
     }
 
     private fun sanitizeFilename(name: String): String? {
-        return name
-            .replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        return name.replace(Regex("[^a-zA-Z0-9._-]"), "_")
             .takeIf { it.contains('.') && it.length <= 255 }
     }
 
     private fun determineMimeType(response: Response): String {
         return response.header("Content-Type")?.substringBefore(";")?.trim()
-            ?: response.body?.contentType()?.type
-            ?: response.request.url.toString().substringAfterLast('.').let { ext ->
-                when (ext.lowercase()) {
-                    "mp3" -> "audio/mpeg"
-                    "mp4" -> "video/mp4"
-                    "jpg", "jpeg" -> "image/jpeg"
-                    "png" -> "image/png"
-                    else -> "application/octet-stream"
+            ?: response.body?.contentType()?.type ?: response.request.url.toString()
+                .substringAfterLast('.').let { ext ->
+                    when (ext.lowercase()) {
+                        "mp3" -> "audio/mpeg"
+                        "mp4" -> "video/mp4"
+                        "jpg", "jpeg" -> "image/jpeg"
+                        "png" -> "image/png"
+                        else -> "application/octet-stream"
+                    }
                 }
-            }
     }
 
     private fun determineCharset(response: Response): String {
@@ -126,13 +140,11 @@ class WebViewProxy(context: Context) {
 
     @Throws(IOException::class)
     private fun downloadAndCacheResponse(
-        url: String,
-        request: WebResourceRequest
+        url: String, request: WebResourceRequest
     ): WebResourceResponse {
 
         val client = OkHttpClient()
         val requestBuilder = Request.Builder().url(url)
-
 
         // Поддержка Range-заголовков для докачки
         val rangeHeader = request.requestHeaders["Range"]
@@ -146,27 +158,19 @@ class WebViewProxy(context: Context) {
             throw IOException("Failed to download file: $response")
         }
 
-
         // Получаем поток для чтения ответа
         val body = response.body
         val inputStream = body!!.byteStream()
 
-
         // Создаем временный файл для кеширования
-       // val tempFile = File.createTempFile("temp", null, getCacheDir(contextSS))
-        val tempFile = getCachedFile(url.replace(".mp3",".temp").replace(".flac",".temp"))
-        Log.d("makfa !!!>>> ", tempFile.toString());
+        val tempFile = getTempFile(url)
         val fileOutputStream = FileOutputStream(tempFile)
 
-
         // Читаем и записываем файл одновременно
-        val teeInputStream: TeeInputStream = TeeInputStream(
-            inputStream,
-            fileOutputStream,
-            onComplete = {
-                tempFile.renameTo(getCachedFile(url))
-            })
-
+        val teeInputStream = TeeInputStream(inputStream, fileOutputStream, onComplete = {
+            fileOutputStream.close()
+            tempFile.renameTo(getCachedFile(url))
+        })
 
         // Создаем ответ для WebView
         val webResourceResponse = WebResourceResponse(
@@ -175,14 +179,15 @@ class WebViewProxy(context: Context) {
             response.code,
             response.message.takeIf { it.isNotEmpty() } ?: "OK", // Обязательно непустая строка
             convertHeaders(response.headers),
-            teeInputStream
-        )
+            teeInputStream)
 
         return webResourceResponse
     }
 
     @Throws(IOException::class)
-    private fun createResponseFromFile(file: File, request: WebResourceRequest): WebResourceResponse {
+    private fun createResponseFromFile(
+        file: File, request: WebResourceRequest
+    ): WebResourceResponse {
         val randomAccessFile = RandomAccessFile(file, "r")
 
 
@@ -194,9 +199,8 @@ class WebViewProxy(context: Context) {
 
         if (rangeHeader != null) {
             // Парсим Range-заголовок (пример: "bytes=0-499")
-            val ranges =
-                rangeHeader.replace("bytes=", "").split("-".toRegex()).dropLastWhile { it.isEmpty() }
-                    .toTypedArray()
+            val ranges = rangeHeader.replace("bytes=", "").split("-".toRegex())
+                .dropLastWhile { it.isEmpty() }.toTypedArray()
             start = ranges[0].toLong()
             if (ranges.size > 1) {
                 end = ranges[1].toLong()
@@ -209,8 +213,7 @@ class WebViewProxy(context: Context) {
 
         // Создаем ограниченный поток
         val limitedInputStream: InputStream = LimitedInputStream(
-            FileInputStream(randomAccessFile.fd),
-            contentLength
+            FileInputStream(randomAccessFile.fd), contentLength
         )
 
 
@@ -220,58 +223,42 @@ class WebViewProxy(context: Context) {
             headers["Content-Range"] = "bytes $start-$end/$fileLength"
             headers["Accept-Ranges"] = "bytes"
             return WebResourceResponse(
-                "audio/mpeg",
-                "utf-8",
-                206,
-                "Partial Content",
-                headers,
-                limitedInputStream
+                "audio/mpeg", "utf-8", 206, "Partial Content", headers, limitedInputStream
             )
         } else {
             headers["Content-Length"] = fileLength.toString()
             return WebResourceResponse(
-                "audio/mpeg",
-                "utf-8",
-                200,
-                "OK",
-                headers,
-                limitedInputStream
+                "audio/mpeg", "utf-8", 200, "OK", headers, limitedInputStream
             )
         }
     }
 
 
-
-
     fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+
         val url = request.url.toString()
 
-
-        // Перехватываем только MP3 файлы
+        // Перехватываем только mp3 и flac файлы
         if (url.endsWith(".mp3") || url.endsWith(".flac")) {
             try {
-                return downloadAndCacheResponse(url, request);
+                // Проверяем наличие файла в кеше
+                val cachedFile = getCachedFile(url)
+                if (cachedFile.exists()) {
+                    // Если файл есть в кеше - отдаем его
+                    // return createResponseFromFile(cachedFile, request)
+                    return null
+                } else {
+                    // Если файла нет - загружаем, кешируем и отдаем
+                    // Кешируем только те файлы, которые запрашиваются с начала (Range: bytes=0-)
+                    if (shouldCacheRequest(request)) {
+                        return downloadAndCacheResponse(url, request)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
 
-/*               // Проверяем наличие файла в кеше
-               val cachedFile = getCachedFile(url)
-/               return if (cachedFile.exists()) {
-                   // Если файл есть в кеше - отдаем его
-                   createResponseFromFile(cachedFile, request)
-               } else {
-                   // Если файла нет - загружаем, кешируем и отдаем
-                   downloadAndCacheResponse(url, request)
-               }
-
-*/
-           } catch (e: Exception) {
-               e.printStackTrace()
-           }
-       }
-//        val shouldBlock = false // filterNetworkRequests(webView, request);
-//        Log.d("WebView", request.url.toString())
-//        if (shouldBlock) {
-//            return WebResourceResponse("text/javascript", "UTF-8", null)
-//        }
         return null
-   }
+    }
 }
