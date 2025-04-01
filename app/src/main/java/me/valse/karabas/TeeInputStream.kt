@@ -5,8 +5,12 @@ import java.io.InputStream
 import java.io.OutputStream
 
 
-class TeeInputStream(private val original: InputStream, private val branch: OutputStream) :
+class TeeInputStream(private val original: InputStream, private val branch: OutputStream,
+                     private val onComplete: () -> Unit) :
     InputStream() {
+
+    private var isCompleted = false
+
     @Throws(IOException::class)
     override fun read(): Int {
         val ch = original.read()
@@ -21,6 +25,8 @@ class TeeInputStream(private val original: InputStream, private val branch: Outp
         val count = original.read(b)
         if (count != -1) {
             branch.write(b, 0, count)
+        } else {
+            complete();
         }
         return count
     }
@@ -30,6 +36,8 @@ class TeeInputStream(private val original: InputStream, private val branch: Outp
         val count = original.read(b, off, len)
         if (count != -1) {
             branch.write(b, off, count)
+        } else {
+            complete()
         }
         return count
     }
@@ -40,6 +48,13 @@ class TeeInputStream(private val original: InputStream, private val branch: Outp
             original.close()
         } finally {
             branch.close()
+        }
+    }
+
+    private fun complete() {
+        if (!isCompleted) {
+            isCompleted = true
+            onComplete()
         }
     }
 }

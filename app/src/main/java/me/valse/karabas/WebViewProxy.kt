@@ -153,14 +153,19 @@ class WebViewProxy(context: Context) {
 
 
         // Создаем временный файл для кеширования
-        //val tempFile = File.createTempFile("temp", null, getCacheDir(contextSS))
-        val cachedFile = getCachedFile(url)
-        Log.d("makfa !!!>>> ", cachedFile.toString());
-        val fileOutputStream = FileOutputStream(cachedFile)
+       // val tempFile = File.createTempFile("temp", null, getCacheDir(contextSS))
+        val tempFile = getCachedFile(url.replace(".mp3",".temp").replace(".flac",".temp"))
+        Log.d("makfa !!!>>> ", tempFile.toString());
+        val fileOutputStream = FileOutputStream(tempFile)
 
 
         // Читаем и записываем файл одновременно
-        val teeInputStream: TeeInputStream = TeeInputStream(inputStream, fileOutputStream)
+        val teeInputStream: TeeInputStream = TeeInputStream(
+            inputStream,
+            fileOutputStream,
+            onComplete = {
+                tempFile.renameTo(getCachedFile(url))
+            })
 
 
         // Создаем ответ для WebView
@@ -172,25 +177,6 @@ class WebViewProxy(context: Context) {
             convertHeaders(response.headers),
             teeInputStream
         )
-
-
-        /* // После завершения чтения переименовываем временный файл
-        Thread {
-            try {
-                // Дожидаемся завершения чтения
-                teeInputStream.close()
-                fileOutputStream.close()
-
-
-                // Переименовываем временный файл в постоянный
-                val cachedFile = getCachedFile(url)
-                tempFile.renameTo(cachedFile)
-            } catch (e: IOException) {
-                e.printStackTrace()
-            }
-        }.start()
-
-         */
 
         return webResourceResponse
     }
