@@ -17,24 +17,12 @@ import me.valse.karabas.databinding.ActivityMainBinding
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+    private lateinit var webViewModule: WebViewModule
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
-        binding.webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(
-                view: WebView?,
-                request: WebResourceRequest?
-            ): Boolean {
-                // Загружать все ссылки внутри WebView
-                return false
-            }
-        }
-
-        binding.webView.settings.javaScriptEnabled = true
-        binding.webView.loadUrl("https://ya.ru")
+        webViewModule = WebViewModule(this, binding.webView)
     }
 }
