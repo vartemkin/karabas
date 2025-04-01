@@ -2,6 +2,7 @@ package me.valse.karabas
 
 import android.content.Context
 import android.util.Log
+import android.view.KeyEvent
 import android.webkit.ConsoleMessage
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
@@ -12,13 +13,13 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 
 class WebViewModule(val context: Context, val webView: WebView) {
+
+    private var webViewProxy = WebViewProxy(context);
+
     init {
         webView.webViewClient = object : WebViewClient() {
 
-            override fun shouldOverrideUrlLoading(
-                view: WebView?,
-                request: WebResourceRequest?
-            ): Boolean {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url.toString()
                 if (url.contains("youtube.com") || url.contains("google.com")) {
                     // Открыть в WebView, а не в браузере
@@ -29,19 +30,12 @@ class WebViewModule(val context: Context, val webView: WebView) {
             }
 
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                val shouldBlock = false // filterNetworkRequests(webView, request);
-                Log.d("WebView", request.url.toString())
-                if (shouldBlock) {
-                    return WebResourceResponse("text/javascript", "UTF-8", null)
-                }
-                return null
+                return webViewProxy.shouldInterceptRequest(view, request)
             }
-//            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-//                return filterNetworkRequests(view, request)
-//            }
         }
 
         webView.webChromeClient = object : WebChromeClient() {
+
             override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
                 Log.d("WebView", consoleMessage.message())
                 return true
@@ -66,6 +60,14 @@ class WebViewModule(val context: Context, val webView: WebView) {
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         }
 
-        webView.loadUrl("https://google.com/")
+        webView.loadUrl("https://web.valse.me/")
+    }
+
+    fun onBack(): Boolean {
+        return false;
+    }
+
+    fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        return false;
     }
 }
