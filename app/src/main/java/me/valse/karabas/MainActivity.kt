@@ -1,23 +1,21 @@
 package me.valse.karabas
 
+import android.Manifest
+import android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.PackageManager.PERMISSION_GRANTED
+import android.os.Build
 import android.os.Bundle
-import android.os.PersistableBundle
+import android.os.Environment
+import android.provider.Settings
 import android.view.KeyEvent
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import me.valse.karabas.databinding.ActivityMainBinding
-
-import android.Manifest
-import android.Manifest.permission.WRITE_EXTERNAL_STORAGE
-import android.content.Intent
-import android.content.pm.PackageManager.PERMISSION_GRANTED
-import android.os.Build
-import android.os.Environment
-import android.provider.Settings
-import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 
 private const val REQUEST_CODE_STORAGE_PERMISSION = 1001  // Можно любое уникальное число
 private const val REQUEST_CODE = 1002  // Можно любое уникальное число
@@ -27,26 +25,57 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var webViewModule: WebViewModule
 
+    //private lateinit var mediaSession: MediaSessionCompat
+    //private lateinit var mediaController: MediaControllerCompat
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         webViewModule = WebViewModule(this, binding.webView)
 
-        checkStoragePermission();
-        checkPermissions();
+        webViewModule.cleanupTempFiles()
+        checkStoragePermission()
+        checkPermissions()
+
+
+        /* // Инициализация MediaSession
+        mediaSession = MediaSessionCompat(this, "WebViewMediaSession").apply {
+            setCallback(webViewModule.mediaSessionCallback)
+            setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
+                    MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
+            isActive = true
+        }
+
+        // Создаем MediaController для управления
+        mediaController = MediaControllerCompat(this, mediaSession).apply {
+            MediaControllerCompat.setMediaController(this@MainActivity, this)
+        }*/
+    }
+
+    override fun onDestroy() {
+        webViewModule.cleanupTempFiles()
+        super.onDestroy()
     }
 
     override fun onBackPressed() {
-        if (webViewModule.onBack()) {
-            return;
+        if (binding.webView.canGoBack()) {
+            binding.webView.goBack();
+            return
         }
-        return super.onBackPressed();
+        super.onBackPressed()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (webViewModule.onKeyDown(keyCode, event)) {
-            return true;
+        if (event!!.action == KeyEvent.ACTION_DOWN) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_BACK -> {
+                    if (binding.webView.canGoBack()) {
+                        binding.webView.goBack()
+                        return true;
+                    }
+                }
+            }
         }
         return super.onKeyDown(keyCode, event)
     }

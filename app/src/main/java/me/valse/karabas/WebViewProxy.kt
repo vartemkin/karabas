@@ -21,11 +21,21 @@ import java.io.RandomAccessFile
 
 class WebViewProxy(context: Context) {
 
-    // private val contextSS = context
+//    private fun getCacheDir__Inner(): File {
+//        return File(context.getExternalFilesDir(Environment.DIRECTORY_MUSIC), "KaraCache")
+//    }
 
-    /*private fun getCacheDir2(context: Context): File {
-        return File(context.getExternalFilesDir(Environment.DIRECTORY_MUSIC), "KaraCache")
-    }*/
+    fun cleanupTempFiles() {
+        val now = System.currentTimeMillis()
+        getCacheDir().listFiles()?.forEach { file ->
+            if (file.name.endsWith(".temp")) {
+                // Удаляем файлы старше 1 часа
+                if (now - file.lastModified() > 3600_000) {
+                    file.delete()
+                }
+            }
+        }
+    }
 
     private fun shouldCacheRequest(request: WebResourceRequest): Boolean {
         val rangeHeader = request.requestHeaders["Range"]
@@ -85,6 +95,16 @@ class WebViewProxy(context: Context) {
         return result
     }
 
+    private fun isValidFilename(name: String): Boolean {
+        val pattern = Regex("^[a-zA-Z0-9._-]+\\.[a-zA-Z0-9]+$")
+        return pattern.matches(name) && name.length <= 255
+    }
+
+    private fun sanitizeFilename(name: String): String? {
+        return name.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+            .takeIf { it.contains('.') && it.length <= 255 }
+    }
+
     private fun generateFilenameFromUrl(url: String): String {
         // Извлекаем базовое имя файла
         val baseName = url
@@ -99,16 +119,6 @@ class WebViewProxy(context: Context) {
             isValidFilename(baseName) -> baseName
             else -> sanitizeFilename(baseName) ?: "file_${url.hashCode()}"
         }
-    }
-
-    private fun isValidFilename(name: String): Boolean {
-        val pattern = Regex("^[a-zA-Z0-9._-]+\\.[a-zA-Z0-9]+$")
-        return pattern.matches(name) && name.length <= 255
-    }
-
-    private fun sanitizeFilename(name: String): String? {
-        return name.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-            .takeIf { it.contains('.') && it.length <= 255 }
     }
 
     private fun determineMimeType(response: Response): String {
@@ -169,7 +179,10 @@ class WebViewProxy(context: Context) {
         // Читаем и записываем файл одновременно
         val teeInputStream = TeeInputStream(inputStream, fileOutputStream, onComplete = {
             fileOutputStream.close()
-            tempFile.renameTo(getCachedFile(url))
+            val success = tempFile.renameTo(getCachedFile(url))
+            if (!success) {
+                tempFile.delete()
+            }
         })
 
         // Создаем ответ для WebView
